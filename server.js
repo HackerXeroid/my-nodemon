@@ -1,7 +1,12 @@
-const { exec } = require("child_process");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const app = require("./app");
 const chokidar = require("chokidar");
+const path = require("path");
+
+if (!process.argv[2]) throw new Error("Atleast pass a valid name, dude");
+const dirName = path.dirname(process.argv[2]);
+const fileName = path.basename(process.argv[2]);
 
 const exclude = [
   "**/node_modules/**",
@@ -36,7 +41,8 @@ const exclude = [
   "**/*.es6",
   "**/*.mjs",
 ];
-const watcher = chokidar.watch(__dirname, {
+
+const watcher = chokidar.watch(dirName, {
   ignored: exclude,
   // usePolling: true,
 });
@@ -47,37 +53,47 @@ const kill = (killMessage) => {
   process.exit(1);
 };
 
-if (process.argv.length < 3)
-  kill("You starting promon, man; at least pass a fileName!");
-
-const restart = () => {
-  console.log("Killing c");
-  exec(
-    `cd ${__dirname}; node server.js ${process.argv[2]} & echo "Executed"`,
-    (err, stdout, stderr) => {
-      if (err) return console.error(`Execution error: ${err}`);
-
-      console.log(`stdout: ${stdout}`);
-      console.log(`stderr: ${stderr}`);
-    }
+if (!fs.existsSync(process.argv[2]))
+  kill(
+    "Dude, you should atleast know what you are doing. \nPS: pass a valid file name, dude."
   );
+
+let serverProcess;
+
+const startServer = () => {
+  if (serverProcess) {
+    serverProcess.kill();
+    console.log("Killed previous child process");
+  }
+
+  serverProcess = spawn("node", [process.argv[2]]);
+  serverProcess.on("close", (code) => {
+    if (code !== null) {
+      console.log(`child process exited with code ${code}`);
+    }
+  });
 };
 
 watcher.on("ready", () => {
   console.log("Started promon successfully...");
+  startServer();
 
   watcher.on("add", (path) => {
     console.log("Added " + path);
-    restart();
+    startServer();
   });
 
   watcher.on("unlink", (path) => {
     console.log("Deleted " + path);
-    restart();
+    startServer();
   });
 
   watcher.on("change", (path) => {
     console.log("Changed " + path);
-    restart();
+    startServer();
   });
+});
+
+watcher.on("error", (err) => {
+  console.error(`Watcher error: ${err.message}`);
 });
